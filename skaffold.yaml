@@ -1,0 +1,22 @@
+apiVersion: skaffold/v2beta29
+kind: Config
+metadata:
+  name: transaction-outbox-sample
+build:
+  artifacts:
+  - image: order
+    context: order
+    buildpacks:
+      builder: gcr.io/buildpacks/builder:v1
+  - image: payment
+    context: payment
+    buildpacks:
+      builder: gcr.io/buildpacks/builder:v1
+deploy:
+  kubectl:
+    manifests:
+    - mysql\deployment.yml
+    - order\deployment.yaml
+    - payment\deployment.yaml
+    - kafka\deployment.yml
+    - debezium\deployment.yml

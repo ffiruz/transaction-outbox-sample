@@ -1,0 +1,170 @@
+1.spring cli :
+spring init --build=gradle --dependencies=data-jpa,lombok,mysql,data-rest,h2,web payment.zip
+spring init --build=gradle --dependencies=data-jpa,lombok,mysql,data-rest,h2,web order.zip
+
+İki tane alt projemiz var.Tüm projeyi gradle projesine çevirelim.-->gradle init ve basic seçiyoruz.Ana klasör içinde
+Böyle transaction-outbox-sample bir ana proje olacak.transaction-outbox-sample ile açtığımızda iki alt projenin oluştuğunu görebiliriz.
+
+
+Order ve Payment sub project olduğuu düşünelim.
+Order ve Payment sub projesini ana projeye tanıtırken , setting.gradle içinde;
+
+rootProject.name = 'transaction-outbox-sample'
+include 'order'
+include 'payment'
+
+Order projesini yapmaktan başlayacağız.Ve yaptığımız iş bu domain etrafınfa şekillenecek.
+
+skaffold
+:install-> choco install -y skaffold
+
+:skaffold init  --generate-manifests  -> Buradan alt projelerimizden payment ve order projelerini seçip enter a basıyoruz ve bize skaffold.yml dosyası oluşturmuş olacak.
+Aynı zamanda order ve payment ın içinde birer tane deployment.yaml dosyasını eklemiş olur.
+skaffold gerçekten tek bir yaml file ile size build ve deploy işlemini yapmanızı sağlar.Minikube kullanarak projeyi deploy etmemizi sağlayacak.
+
+skaffold  init --generate-manifests --force -->order ve payment projelerini seçeceğiz.Bu bize skaffold.yml dosyasını oluşturacak.Order ve Payment içerisine de birer tane deployment.yaml dosyası ekler.
+
+
+mysql ve kafka adında iki directory oluşturduk.
+mysql altında deployment.yml dosyasını olyuşturuyoruz.
+
+mysql de Debezium database e bağlanan low level bi kullanıcı.Buna Grant ile yetkiler verdik.
+
+Ardından orders servisine geçip ortam değişkenlerini tanımlayacağız.
+
+Multimodule projelerin avantajı projeleri birarda tutuyorsun.
+
+mysql,debizium ve kafka isminde folder lar oluşturuyoruz.Ve içlerine deployment.yml dosyasını oluşturuyoruz.
+
+yml içindeki volumeMounts ile önceden oluşturmak istediğimiz işlemleri yapapbiliriz.Mesela mysql için bi tablo oluştuurp debizum kullanıcısı oluşturulmuşve yetkiler(grant) verilmiştir.
+
+
+Orders ve payment için ortam değişikliklerini application.yml içinde tanıtabiliriz.
+        env:
+          - name: SPRING_DATASOURCE_URL
+            value: jdbc:mysql//mysql:3306/payments
+          - name: SPRING_DATASOURCE_USERNAME
+            value: root
+          - name: SPRING_DATASOURCE_PASSWORD
+            value: verysecret
+
+
+jdbc:mysql//mysql:3306/payments -> burada tanımladığımız mysql servisinin , mysql folder içindeki application yml içinde tanımlıyoruz.Ve microservis folderlarımızı içindeki application yml da kullanıyoruz.
+
+Kafka:Kafka başlangıçta Linkedindenki eventler için kullanılıyordu.Milyonlarca isteğin alınıp ilgili kişi ve gruplara ayrı ayrı gönderebilcek bi sistemden ortaya çıkıyor.
+Kafkanın zookeeper bağımlılığı bulunmaktadır.Zookeeper da Kafnaın bir nevi metadatasını tutan bi yapıdır.Offsetlerini consumer gruplarını vs.
+Kafka folderının içinden application.yml içinden konfigurasyonunmuuz tanımladık.Eski ve yeni veriyi turarak karşılaştırır.
+
+
+Debezium:Bir connectordur.Kafkaya yazmak için debizumu kullanıyoruz.
+a gerçek zamanlı oluşan değişikliklerin yakalanmasını ve stream edilmesini sağlayan, open source ve distributed bir araç olan Debezium CDC(Change Data Capture).
+Debezium, veritabanında istenilen tabloda yahut o tablonun istenilen kolonlarında olan tüm verisel değişiklikleri yakalayarak Kafka’ya aktarır. 
+Debizium ile tablodaki isteğimizi kolonu kontrol edebiliriz.Mesela password kolonunu kafkaya gönermek istemeyebiliriz.
+Debizum folder içinde applicatioın.yml içinde configleri yazdık.
+
+Miinkyube ayağa kaldırdık.Skafefol du minikube e deploy edeceğiz.
+
+skaffold run ile çalıştıralım.Orders ve Paymentsin latest versiyonunu build etmeye çalışacak ve diğer yapılarıda.ilgili proje diizininde çalıştıralım.(skaffold run)
+Skaffold içerisine mysql , kafka ve debiziumuda ekleyeceğiz.
+İlk başta ayağa kalkması gerekeni Skaffold da ki application.yml da manifest tagının altına ilk olarak sql i yazarız.
+İlk önce mysql ayağa kalkacak sonra order ve payment microservislerimiz ayağa kalkcak.Ardından kafka ve sonra da debeziumda kafkaya veriyi göndermek için ayağa kalkacak.
+
+skaffold run  da invalid source release sorunu 17 desteği yok.11 kullanacağzı projelerimizde.
+
+choco install k9s ile kubernetst cli indirdim.ve k9s komutu ile podları göörüntüleyebiliriz.
+
+kubect : Unable to connect to the server: net/http: TLS handshake timeout
+solve:  minikube remove and unset all_proxy  ->dockerın settingsinden memoryi arttır.
+
+minikube dasboard -> dashboard açar.
+
+k9s  -> kubernetest dashboardı açar.Ve oradan podlarımızı minikube altında görebiliriz.Podların bir kısmı fail olsa dahi bir süre sonra kendini toplarlayabilir.
+
+Burada mesela kafka-ui yı dışarı açabiliriz.ctrl+f -> Container port:8080,Local port:8080  ->postforward ile yapıyoruz.http://localhost:8080/ ile kafka ui y görüntüleyebiliriz.
+Normalde bu connectoru deveops pipeline içinde ekleyebiliirz.Ancak biz manuel yapacağız.Burada bi connector objesi var.İsmi order-connector.Bu connector ile  , bu connectore verdiğimiz bilgilerle(aşağıdaki curl sorgusunda tanıttık.) vererek ilgili yerdeki verileri oku.
+order-connectorun bilgileri aşağıdaki gibi.database.include.list": "payments,orders" ile  sadece payments ve orders tablolardaki mysql tablolardaki verileri kafkaya gönderiyoıruz.
+->$ curl -i -X POST -H "Accept:application/json" -H "Content-Type:application/json" localhost:8083/connectors/ -d '{ "name": "order-connector",
+ "config": {"database.allowPublicKeyRetrieval":"true","connector.class": "io.debezium.connector.mysql.MySqlConnector", "tasks.max": "1", "database.hostname": "mysql", "database.port": "3306",
+ "database.user": "debezium", "database.password": "dbz", "database.server.id": "184054", "database.server.name": "mysql", "database.include.list": "payments,orders", 
+"database.history.kafka.bootstrap.servers": "kafka:9092", "database.history.kafka.topic": "dbhistory.orders" } }'
+
+Yukarıdaki post sorgusuyla 201 created ı görürüz.http://localhost:8083/connectors şke sorgu attığımızda ilgili connectoru görürüz.
+
+Debiziumu da 8083 de ayağa kalkdırıcaz. Container port:8083,Local port:8083 --> Debizium için bir tane connectore ihtiyacımız var.http://localhost:8083/connectors ile bunu görebiliriz.
+
+
+
+Şimdi Ordersa bi post isteği göndereceğiz.Öncesinde Ordersın 8080 portununu dışarıya açalım ve post forward ile 8081 yapalım.Dikkat ederseniz ordersa controler yazmadık ama post isteği atabiliyoruz.Çünkü "@RepositoryRestResource" bize bunu sağlıyor. Ve data entity ile tüm sistem ayağa kalkıyor.
+curl -XPOST -H 'Content-Type:application/json' -d '{"productId":"sku1","customerId":"123","price":"4.3"}' http://localhost:8081/orders
+curl -XGET http://localhost:8081/orders   ile verileri çekelim.
+
+Orders tablosuna bi post olduğunda , debizium buradaki datayı kafkaya yazdırır.Kafka-ui da messages altında görebiliriz.Öncesi bu tablosaki şemayı yaratır ve sonra ilgili datatipleri ile datayı kafkaya insert eder.Öncesinde de mysql.orders.orders topicini oluşturur.
+ mysql.orders.orders içinde payload tagı altında before ve after olarak datayı tutar.İlk kayıt attığımız için before null  olacak.after ise şimdiki ekledğimiz kayıt.source da verinin bnereden geldiğini görebiliriz.
+
+Ardından Orders tablosuna bi güncelleme atalım. ->  curl -XPATCH -H 'Content-Type:application/json' -d '{"price":"7.3"}' http://localhost:8081/orders/1
+mysql.orders.orders altında yeni bi mesaj üretir.Ve before için önceki kayıt, after için ise şimdiki kaydo günceller:
+
+		"source": {
+			"version": "1.9.4.Final",
+			"connector": "mysql",
+			"name": "mysql",
+			"ts_ms": 1677318308000,
+			"snapshot": "false",
+			"db": "orders",
+			"sequence": null,
+			"table": "orders",
+			"server_id": 1,
+			"gtid": null,
+			"file": "binlog.000002",
+			"pos": 2488,
+			"row": 0,
+			"thread": 1193,
+			"query": null
+		},
+		"op": "c",
+		"ts_ms": 1677318308951,
+		"transaction": null
+
+Bu aladaki "op": "c",  create , "op": "u", update i ifade eder.
+
+
+Biz orders tablsounda db işlemi yaptığımzıda , transactional işlem yapar.Çünkü default olarak transactionalı kullanır spring rest.Ardından debizium burada ki veriyi "binlog.000002" şeklinde bi dosyaya kaydeder ve kafkaya yazar.
+Ardından bu kafkaya yazan kaydı Consumert da okuyacağız.Burada da Payment servisi kafkaya bağlanacak ve oradaki datayı consume edecek.
+Payment içindeki application yaml altına:kafka: yı ekliyoruz.Ve spring kafkayı gradle ekliyoruz. 
+Kafka-UI içined consumer alanında "payments" group id li bi kaydı görebiliriz.Message-behind:okunmamış mesaj sayısını gösterir.
+
+Payment , order eventini alacak.Buradaki event bir json objesi.Kafka uiya atılan bi mesaj.Bunu java objesini çeviriyoruz.Ve KafkaConsumerConfig classımız ekliyoruz.
+jsonı java classına otomotik döünştüren site -->https://json2csharp.com/code-converters/json-to-pojo
+
+
+
+Not:Datayı db ye yazdı ama  produce edemedi  o zman transactional scope içerisinde olduğu için db de roll back olur.
+Diğer senayoda mesajı db ye yazdı produce etti ama kafkaya yazamadı.Burada davranış koymamız gerekir.Hata aldığın zaman "dead letter queue ( undelivered-message queue)" a mesajı at diyebiliyoruz.Burada ayrı bi zamanda bu testlim edilmemiş mesajlar tekrar işleniyor.
+
+her değişiklikte skaffold run ile deploy ve buidl edebiliriz.
+
+Kafkayı kullanmanın asıl amacı real time ile veya real time yakın  dataları işlemek.
+
+
+Kafkanın için ebaktığımızda local bi cluster görüyoruz.
+
+
+kubectl delete pods --all> tüm podları kaldırır.
+
+minikube ssh  -> top-> minikube içerisini görebiliriz.Memory kullanımı vs.
+
+
+
+Özetle:
+
+Order servisine atılan bi istek veritabanına yazılır.Yazıldıktan sonra debezium bunu kafkaya gönderir.Kafka da bunu için otomotik topic yaratılıyor.Bu topici dinleyen Payment servisde bu mesajı alıyor , mesajı aldıktan sonra kendi businessı işletip  kendi veri tabanına kaydediyor.
+
+
+
+
+
+
+
+
+
+
