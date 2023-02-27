@@ -141,7 +141,7 @@ jsonı java classına otomotik döünştüren site -->https://json2csharp.com/co
 Not:Datayı db ye yazdı ama  produce edemedi  o zman transactional scope içerisinde olduğu için db de roll back olur.
 Diğer senayoda mesajı db ye yazdı produce etti ama kafkaya yazamadı.Burada davranış koymamız gerekir.Hata aldığın zaman "dead letter queue ( undelivered-message queue)" a mesajı at diyebiliyoruz.Burada ayrı bi zamanda bu testlim edilmemiş mesajlar tekrar işleniyor.
 
-her değişiklikte skaffold run ile deploy ve buidl edebiliriz.
+her değişiklikte skaffold dev ile yaptığımız değişiklikleri deploy edebeiliriz.
 
 Kafkayı kullanmanın asıl amacı real time ile veya real time yakın  dataları işlemek.
 
